@@ -2,6 +2,7 @@
 
 import json
 import time
+import os
 from datetime import datetime
 
 import schedule
@@ -21,8 +22,8 @@ def main():
 
     print("Creating client")
     authd_client = fitbit.Fitbit(
-        "23RFN5",
-        "31b59643e1aef0330b667c565dafe42d",
+        os.environ["CLIENT_ID"],
+        os.environ["CLIENT_SECRET"],
         access_token=data["access_token"],
         refresh_token=data["refresh_token"],
         expires_at=data["expires_at"],
