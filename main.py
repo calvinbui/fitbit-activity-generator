@@ -65,10 +65,7 @@ def main():
 
 if __name__ == "__main__":
     print("Creating schedule")
-    schedule.every().day.at("03:10", os.environ["TZ"]).do(main)
-    schedule.every().day.at("09:20", os.environ["TZ"]).do(main)
-    schedule.every().day.at("15:30", os.environ["TZ"]).do(main)
-    schedule.every().day.at("21:40", os.environ["TZ"]).do(main)
+    schedule.every(5).minutes.do(main)
 
     while True:
         schedule.run_pending()
