@@ -65,7 +65,7 @@ def main():
 
 if __name__ == "__main__":
     print("Creating schedule")
-    schedule.every(5).minutes.do(main)
+    schedule.every(int(os.environ["INTERVAL"])).minutes.do(main)
 
     while True:
         schedule.run_pending()
