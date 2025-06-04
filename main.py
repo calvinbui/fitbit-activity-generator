@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
+"""
+Fitbit activity logger that automatically logs activities at scheduled intervals.
+"""
 
 import json
+import logging
 import time
 import os
 from datetime import datetime
@@ -8,19 +12,22 @@ from datetime import datetime
 import schedule
 import fitbit
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 def refresh(token):
-    print("Refreshing token")
-    with open("token.json", "w") as f:
+    logger.info("Refreshing token")
+    with open("token.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(token))
 
 
 def main():
-    print("Reading token")
-    with open("token.json", "r") as f:
+    logger.info("Reading token")
+    with open("token.json", "r", encoding="utf-8") as f:
         data = json.loads(f.read())
 
-    print("Creating client")
+    logger.info("Creating client")
     authd_client = fitbit.Fitbit(
         os.environ["CLIENT_ID"],
         os.environ["CLIENT_SECRET"],
@@ -31,7 +38,7 @@ def main():
         system="en_AU",
     )
 
-    print("Log Swim activity")
+    logger.info("Log Swim activity")
     authd_client.log_activity(
         {
             "activityId": "90024",
@@ -42,7 +49,7 @@ def main():
         }
     )
 
-    print("Log Meditating activity")
+    logger.info("Log Meditating activity")
     authd_client.log_activity(
         {
             "activityId": "52001",
@@ -52,7 +59,7 @@ def main():
         }
     )
 
-    print("Log Yoga activity")
+    logger.info("Log Yoga activity")
     authd_client.log_activity(
         {
             "activityId": "7075",
@@ -64,7 +71,7 @@ def main():
 
 
 if __name__ == "__main__":
-    print("Creating schedule")
+    logger.info("Creating schedule")
     schedule.every(int(os.environ["INTERVAL"])).minutes.do(main)
 
     while True:
