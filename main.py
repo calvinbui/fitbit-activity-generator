@@ -73,6 +73,35 @@ def main():
         }
     )
 
+    logger.info("Log Running activity")
+    authd_client.log_activity(
+        {
+            "activityId": "90009",
+            "date": datetime.today().strftime("%Y-%m-%d"),
+            "startTime": "04:00",
+            "durationMillis": hours_to_milliseconds(1),
+            "distance": "10000.00",
+            "distanceUnit": "Steps",
+        }
+    )
+
+    logger.info("Log CrossFit activity")
+    authd_client.log_activity(
+        {
+            "activityId": "91045",
+            "date": datetime.today().strftime("%Y-%m-%d"),
+            "startTime": "05:00",
+            "durationMillis": hours_to_milliseconds(1),
+        }
+    )
+
+    logger.info("Log sleep")
+    now = datetime.now()
+    authd_client.log_sleep(
+        start_time=datetime(year=now.year, month=now.month, day=now.day, hour=6, minute=0),
+        duration=hours_to_milliseconds(7),
+    )
+
 
 if __name__ == "__main__":
     logger.info("Creating schedule")
