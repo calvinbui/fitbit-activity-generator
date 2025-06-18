@@ -22,6 +22,10 @@ def refresh(token):
         f.write(json.dumps(token))
 
 
+def hours_to_milliseconds(hours):
+    return int(hours * 60 * 60 * 1000)
+
+
 def main():
     logger.info("Reading token")
     with open("token.json", "r", encoding="utf-8") as f:
@@ -44,7 +48,7 @@ def main():
             "activityId": "90024",
             "date": datetime.today().strftime("%Y-%m-%d"),
             "startTime": "01:00",
-            "durationMillis": "3600000",
+            "durationMillis": hours_to_milliseconds(1),
             "distance": "10.0",
         }
     )
@@ -55,7 +59,7 @@ def main():
             "activityId": "52001",
             "date": datetime.today().strftime("%Y-%m-%d"),
             "startTime": "02:00",
-            "durationMillis": "3600000",
+            "durationMillis": hours_to_milliseconds(1),
         }
     )
 
@@ -65,7 +69,7 @@ def main():
             "activityId": "7075",
             "date": datetime.today().strftime("%Y-%m-%d"),
             "startTime": "03:00",
-            "durationMillis": "3600000",
+            "durationMillis": hours_to_milliseconds(1),
         }
     )
 
