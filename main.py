@@ -95,12 +95,12 @@ def main():
         }
     )
 
-    logger.info("Log sleep")
-    now = datetime.now()
-    authd_client.log_sleep(
-        start_time=datetime(year=now.year, month=now.month, day=now.day, hour=6, minute=0),
-        duration=hours_to_milliseconds(7),
-    )
+    # logger.info("Log sleep")
+    # now = datetime.now()
+    # authd_client.log_sleep(
+    #     start_time=datetime(year=now.year, month=now.month, day=now.day, hour=6, minute=0),
+    #     duration=hours_to_milliseconds(7),
+    # )
 
 
 if __name__ == "__main__":
