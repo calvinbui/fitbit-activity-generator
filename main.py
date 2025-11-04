@@ -7,6 +7,8 @@ import json
 import logging
 import time
 import os
+import signal
+import sys
 from datetime import datetime
 
 import schedule
@@ -15,22 +17,27 @@ import fitbit
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Flag to indicate shutdown requested
+shutdown_requested = False
+
+def signal_handler(sig, frame):
+    """Handle shutdown signals gracefully"""
+    global shutdown_requested
+    logger.info(f'Received signal {sig}, shutting down gracefully...')
+    shutdown_requested = True
 
 def refresh(token):
     logger.info("Refreshing token")
     with open("token.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(token))
 
-
 def hours_to_milliseconds(hours):
     return int(hours * 60 * 60 * 1000)
-
 
 def main():
     logger.info("Reading token")
     with open("token.json", "r", encoding="utf-8") as f:
         data = json.loads(f.read())
-
     logger.info("Creating client")
     authd_client = fitbit.Fitbit(
         os.environ["CLIENT_ID"],
@@ -41,7 +48,6 @@ def main():
         refresh_cb=refresh,
         system="en_AU",
     )
-
     logger.info("Log Swim activity")
     authd_client.log_activity(
         {
@@ -52,7 +58,6 @@ def main():
             "distance": "10.0",
         }
     )
-
     logger.info("Log Meditating activity")
     authd_client.log_activity(
         {
@@ -62,7 +67,6 @@ def main():
             "durationMillis": hours_to_milliseconds(1),
         }
     )
-
     logger.info("Log Yoga activity")
     authd_client.log_activity(
         {
@@ -72,7 +76,6 @@ def main():
             "durationMillis": hours_to_milliseconds(1),
         }
     )
-
     logger.info("Log Running activity")
     authd_client.log_activity(
         {
@@ -84,7 +87,6 @@ def main():
             "distanceUnit": "Steps",
         }
     )
-
     logger.info("Log CrossFit activity")
     authd_client.log_activity(
         {
@@ -94,7 +96,6 @@ def main():
             "durationMillis": hours_to_milliseconds(1),
         }
     )
-
     # logger.info("Log sleep")
     # now = datetime.now()
     # authd_client.log_sleep(
@@ -102,11 +103,17 @@ def main():
     #     duration=hours_to_milliseconds(7),
     # )
 
-
 if __name__ == "__main__":
+    # Register signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
     logger.info("Creating schedule")
     schedule.every(int(os.environ["INTERVAL"])).minutes.do(main)
-
-    while True:
+    
+    while not shutdown_requested:
         schedule.run_pending()
         time.sleep(1)
+    
+    logger.info("Shutdown complete")
+    sys.exit(0)
