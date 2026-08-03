@@ -1,5 +1,7 @@
-# Fitbit
-token.json
+# Google OAuth credentials and per-account tokens
+credentials.json
+client_secret*.json
+token*.json
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

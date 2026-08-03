@@ -1,119 +1,121 @@
 #!/usr/bin/env python3
-"""
-Fitbit activity logger that automatically logs activities at scheduled intervals.
-"""
+"""Create scheduled manual activities through the Google Health API."""
 
 import json
 import logging
-import time
 import os
 import signal
 import sys
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import google.auth.transport.requests
+from google.auth.exceptions import RefreshError
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import AuthorizedSession
 import schedule
-import fitbit
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+HEALTH_API_BASE_URL = "https://health.googleapis.com/v4"
+EXERCISE_URL = f"{HEALTH_API_BASE_URL}/users/me/dataTypes/exercise/dataPoints"
+TOKEN_PATH = Path(os.environ.get("TOKEN_PATH", "token.json"))
+TIME_ZONE = os.environ.get("TZ", "Australia/Sydney")
+
+ACTIVITIES = (
+    ("SWIMMING", 1, {"distanceMillimeters": 10_000}),
+    ("MEDITATE", 2, {}),
+    ("YOGA", 3, {}),
+    ("RUNNING", 4, {"steps": "10000"}),
+    ("CROSSFIT", 5, {}),
+)
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Flag to indicate shutdown requested
 shutdown_requested = False
 
-def signal_handler(sig, frame):
-    """Handle shutdown signals gracefully"""
+
+def signal_handler(sig, _frame):
+    """Handle shutdown signals gracefully."""
     global shutdown_requested
-    logger.info(f'Received signal {sig}, shutting down gracefully...')
+    logger.info("Received signal %s, shutting down gracefully...", sig)
     shutdown_requested = True
 
-def refresh(token):
-    logger.info("Refreshing token")
-    with open("token.json", "w", encoding="utf-8") as f:
-        f.write(json.dumps(token))
 
-def hours_to_milliseconds(hours):
-    return int(hours * 60 * 60 * 1000)
+def save_credentials(credentials, token_path=TOKEN_PATH):
+    token_path.write_text(credentials.to_json(), encoding="utf-8")
+
+
+def load_credentials(token_path=TOKEN_PATH):
+    """Load and refresh persisted Google user credentials."""
+    if not token_path.exists():
+        raise FileNotFoundError(
+            f"Google token file {token_path} does not exist. Run gather_keys_oauth2.py first."
+        )
+
+    credentials = Credentials.from_authorized_user_file(str(token_path))
+    if not credentials.valid:
+        if not credentials.refresh_token:
+            raise ValueError(f"Google token file {token_path} has no refresh token. Re-authorize it.")
+        logger.info("Refreshing Google access token")
+        try:
+            credentials.refresh(google.auth.transport.requests.Request())
+        except RefreshError as error:
+            raise RuntimeError("Unable to refresh Google credentials. Re-authorize this account.") from error
+        save_credentials(credentials, token_path)
+
+    return credentials
+
+
+def activity_payload(exercise_type, start_time, metrics_summary):
+    """Build a Google Health API exercise data point for a one-hour activity."""
+    end_time = start_time + timedelta(hours=1)
+    return {
+        "dataSource": {"recordingMethod": "MANUAL"},
+        "exercise": {
+            "interval": {
+                "startTime": start_time.isoformat(timespec="seconds"),
+                "startUtcOffset": f"{int(start_time.utcoffset().total_seconds())}s",
+                "endTime": end_time.isoformat(timespec="seconds"),
+                "endUtcOffset": f"{int(end_time.utcoffset().total_seconds())}s",
+            },
+            "exerciseType": exercise_type,
+            "metricsSummary": metrics_summary,
+        },
+    }
+
+
+def log_activity(session, exercise_type, hour, metrics_summary, now):
+    start_time = now.replace(hour=hour, minute=0, second=0, microsecond=0)
+    payload = activity_payload(exercise_type, start_time, metrics_summary)
+    logger.info("Log %s activity", exercise_type.title())
+    response = session.post(EXERCISE_URL, json=payload, timeout=30)
+    if not response.ok:
+        raise RuntimeError(
+            f"Google Health API rejected {exercise_type}: {response.status_code} {response.text}"
+        )
+
 
 def main():
-    logger.info("Reading token")
-    with open("token.json", "r", encoding="utf-8") as f:
-        data = json.loads(f.read())
-    logger.info("Creating client")
-    authd_client = fitbit.Fitbit(
-        os.environ["CLIENT_ID"],
-        os.environ["CLIENT_SECRET"],
-        access_token=data["access_token"],
-        refresh_token=data["refresh_token"],
-        expires_at=data["expires_at"],
-        refresh_cb=refresh,
-        system="en_AU",
-    )
-    logger.info("Log Swim activity")
-    authd_client.log_activity(
-        {
-            "activityId": "90024",
-            "date": datetime.today().strftime("%Y-%m-%d"),
-            "startTime": "01:00",
-            "durationMillis": hours_to_milliseconds(1),
-            "distance": "10.0",
-        }
-    )
-    logger.info("Log Meditating activity")
-    authd_client.log_activity(
-        {
-            "activityId": "52001",
-            "date": datetime.today().strftime("%Y-%m-%d"),
-            "startTime": "02:00",
-            "durationMillis": hours_to_milliseconds(1),
-        }
-    )
-    logger.info("Log Yoga activity")
-    authd_client.log_activity(
-        {
-            "activityId": "7075",
-            "date": datetime.today().strftime("%Y-%m-%d"),
-            "startTime": "03:00",
-            "durationMillis": hours_to_milliseconds(1),
-        }
-    )
-    logger.info("Log Running activity")
-    authd_client.log_activity(
-        {
-            "activityId": "90009",
-            "date": datetime.today().strftime("%Y-%m-%d"),
-            "startTime": "04:00",
-            "durationMillis": hours_to_milliseconds(1),
-            "distance": "10000.00",
-            "distanceUnit": "Steps",
-        }
-    )
-    logger.info("Log CrossFit activity")
-    authd_client.log_activity(
-        {
-            "activityId": "91045",
-            "date": datetime.today().strftime("%Y-%m-%d"),
-            "startTime": "05:00",
-            "durationMillis": hours_to_milliseconds(1),
-        }
-    )
-    # logger.info("Log sleep")
-    # now = datetime.now()
-    # authd_client.log_sleep(
-    #     start_time=datetime(year=now.year, month=now.month, day=now.day, hour=6, minute=0),
-    #     duration=hours_to_milliseconds(7),
-    # )
+    credentials = load_credentials()
+    session = AuthorizedSession(credentials)
+    now = datetime.now(ZoneInfo(TIME_ZONE))
+    for exercise_type, hour, metrics_summary in ACTIVITIES:
+        log_activity(session, exercise_type, hour, metrics_summary, now)
+
 
 if __name__ == "__main__":
-    # Register signal handlers
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
-    
+
     logger.info("Creating schedule")
     schedule.every(int(os.environ["INTERVAL"])).minutes.do(main)
-    
+
     while not shutdown_requested:
         schedule.run_pending()
         time.sleep(1)
-    
+
     logger.info("Shutdown complete")
     sys.exit(0)

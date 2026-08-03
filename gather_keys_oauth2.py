@@ -1,107 +1,56 @@
 #!/usr/bin/env python3
-import cherrypy
+"""Authorize one Google account and save credentials for the activity generator."""
+
+import argparse
 import json
-import sys
-import threading
-import traceback
-import webbrowser
+import logging
+from pathlib import Path
 
-from urllib.parse import urlparse
-from fitbit.api import Fitbit
-from oauthlib.oauth2.rfc6749.errors import MismatchingStateError, MissingTokenError
+from google_auth_oauthlib.flow import Flow
 
 
-class OAuth2Server:
-    def __init__(self, client_id, client_secret, redirect_uri="http://127.0.0.1:8080/"):
-        """Initialize the FitbitOauth2Client"""
-        self.success_html = """
-            <h1>You are now authorized to access the Fitbit API!</h1>
-            <br/><h3>You can close this window</h3>"""
-        self.failure_html = """
-            <h1>ERROR: %s</h1><br/><h3>You can close this window</h3>%s"""
+SCOPE = "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.writeonly"
+# This is the callback URI specified by the Google Health API setup guide.
+DEFAULT_REDIRECT_URI = "https://www.google.com"
+AUTHORIZATION_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 
-        self.fitbit = Fitbit(
-            client_id,
-            client_secret,
-            redirect_uri=redirect_uri,
-            timeout=10,
-        )
 
-        self.redirect_uri = redirect_uri
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("credentials_file", type=Path, help="Downloaded Google OAuth client JSON")
+    parser.add_argument("token_file", type=Path, help="Where to write this account's token JSON")
+    return parser.parse_args()
 
-    def browser_authorize(self):
-        """
-        Open a browser to the authorization url and spool up a CherryPy
-        server to accept the response
-        """
-        url, _ = self.fitbit.client.authorize_token_url()
-        # Open the web browser in a new thread for command-line browser support
-        threading.Timer(1, webbrowser.open, args=(url,)).start()
 
-        # Same with redirect_uri hostname and port.
-        urlparams = urlparse(self.redirect_uri)
-        cherrypy.config.update(
-            {
-                "server.socket_host": urlparams.hostname,
-                "server.socket_port": urlparams.port,
-            }
-        )
+def load_client_config(credentials_file):
+    """Load Google OAuth client credentials using the Health API's v2 auth endpoint."""
+    client_config = json.loads(credentials_file.read_text(encoding="utf-8"))
+    client_type = "web" if "web" in client_config else "installed"
+    client_config[client_type]["auth_uri"] = AUTHORIZATION_URI
+    return client_config
 
-        cherrypy.quickstart(self)
 
-    @cherrypy.expose
-    def index(self, state, code=None, error=None):
-        """
-        Receive a Fitbit response containing a verification code. Use the code
-        to fetch the access_token.
-        """
-        error = None
-        if code:
-            try:
-                self.fitbit.client.fetch_access_token(code)
-            except MissingTokenError:
-                error = self._fmt_failure(
-                    "Missing access token parameter.</br>Please check that "
-                    "you are using the correct client_secret"
-                )
-            except MismatchingStateError:
-                error = self._fmt_failure("CSRF Warning! Mismatching state")
-        else:
-            error = self._fmt_failure("Unknown error while authenticating")
-        # Use a thread to shutdown cherrypy so we can return HTML first
-        self._shutdown_cherrypy()
-        return error if error else self.success_html
+def main():
+    args = parse_args()
+    flow = Flow.from_client_config(
+        load_client_config(args.credentials_file),
+        scopes=[SCOPE],
+        redirect_uri=DEFAULT_REDIRECT_URI,
+    )
+    authorization_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
 
-    def _fmt_failure(self, message):
-        tb = traceback.format_tb(sys.exc_info()[2])
-        tb_html = "<pre>%s</pre>" % ("\n".join(tb)) if tb else ""
-        return self.failure_html % (message, tb_html)
+    print("Open this URL in a browser and authorize the intended Google account:\n")
+    print(authorization_url)
 
-    def _shutdown_cherrypy(self):
-        """Shutdown cherrypy in one second, if it's running"""
-        if cherrypy.engine.state == cherrypy.engine.states.STARTED:
-            threading.Timer(1, cherrypy.engine.exit).start()
+    authorization_response = input(
+        "\nAfter approval, copy the complete URL from the browser address bar and paste it here: "
+    ).strip()
+    flow.fetch_token(authorization_response=authorization_response)
+
+    args.token_file.write_text(flow.credentials.to_json(), encoding="utf-8")
+    print(f"Saved credentials to {args.token_file}")
 
 
 if __name__ == "__main__":
-    if not (len(sys.argv) == 3):
-        print("Arguments: client_id and client_secret")
-        sys.exit(1)
-
-    server = OAuth2Server(*sys.argv[1:])
-    server.browser_authorize()
-
-    profile = server.fitbit.user_profile_get()
-    print(
-        "You are authorized to access data for the user: {}".format(
-            profile["user"]["fullName"]
-        )
-    )
-
-    print("TOKEN\n=====\n")
-
-    with open("token.json", "w") as f:
-        f.write(json.dumps(server.fitbit.client.session.token))
-
-    for key, value in server.fitbit.client.session.token.items():
-        print("{} = {}".format(key, value))
+    logging.basicConfig(level=logging.INFO)
+    main()
